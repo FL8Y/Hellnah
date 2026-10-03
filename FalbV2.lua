@@ -32,24 +32,37 @@ local Entries = UnitConfig.entries
 
 local Settings = {
     Enabled = false,
-    Delay = 1.5,
+
+    -- Minimum allowed interval between fusion requests.
+    Delay = 0.5,
 
     From = 0,
     Below = math.huge,
 
     Order = "Rarest First",
 
-    -- Fusion animation
     RemoveFusionAnimation = false,
 }
+
+--//==================================================
+--// STATS
+--//==================================================
 
 local Stats = {
     Done = 0,
     Scans = 0,
+    Failed = 0,
 }
 
 --//==================================================
---// FUSION ANIMATION REMOVER
+--// FUSION STATE
+--//==================================================
+
+local FusionBusy = false
+local PendingFusion = nil
+
+--//==================================================
+--// ANIMATION REMOVER
 --//==================================================
 
 local DisabledConnections = {}
@@ -60,7 +73,7 @@ local function getControllerConnection()
     if not getconnections then
 
         warn(
-            "[Animation Remover] getconnections is not supported by this executor"
+            "[Animation Remover] getconnections is not supported."
         )
 
         return nil
@@ -74,8 +87,7 @@ local function getControllerConnection()
 
         if fn then
 
-            local info =
-                debug.getinfo(fn)
+            local info = debug.getinfo(fn)
 
             if info and info.source then
 
@@ -97,11 +109,6 @@ end
 local function removeFusionAnimation()
 
     if IsAnimationRemoved then
-
-        warn(
-            "[Animation Remover] Animation is already removed"
-        )
-
         return true
     end
 
@@ -114,58 +121,33 @@ local function removeFusionAnimation()
             "[Animation Remover] FusingController connection NOT FOUND"
         )
 
-        Rayfield:Notify({
-            Title = "Animation Remover",
-            Content = "FusingController connection was not found.",
-            Duration = 4
-        })
-
         return false
     end
 
-    DisabledConnections[1] =
-        connection
+    DisabledConnections[1] = connection
 
     local success, err =
         pcall(function()
-
             connection:Disable()
-
         end)
 
     if not success then
 
-        table.clear(
-            DisabledConnections
-        )
+        table.clear(DisabledConnections)
 
         warn(
-            "[Animation Remover] Failed to disable controller:",
+            "[Animation Remover] Disable failed:",
             err
         )
-
-        Rayfield:Notify({
-            Title = "Animation Remover",
-            Content = "Failed to disable FusingController.",
-            Duration = 4
-        })
 
         return false
     end
 
     IsAnimationRemoved = true
 
-    warn("================================")
-    warn("FUSION ANIMATION REMOVED")
-    warn("FusingController disabled")
-    warn("Result RemoteEvent remains active")
-    warn("================================")
-
-    Rayfield:Notify({
-        Title = "Animation Remover",
-        Content = "Fusion animation removed.",
-        Duration = 3
-    })
+    warn(
+        "[Animation Remover] FusingController disabled."
+    )
 
     return true
 end
@@ -173,11 +155,6 @@ end
 local function restoreFusionAnimation()
 
     if not IsAnimationRemoved then
-
-        warn(
-            "[Animation Remover] Animation is already enabled"
-        )
-
         return
     end
 
@@ -186,28 +163,17 @@ local function restoreFusionAnimation()
     ) do
 
         pcall(function()
-
             connection:Enable()
-
         end)
     end
 
-    table.clear(
-        DisabledConnections
-    )
+    table.clear(DisabledConnections)
 
     IsAnimationRemoved = false
 
-    warn("================================")
-    warn("FUSION ANIMATION RESTORED")
-    warn("FusingController enabled")
-    warn("================================")
-
-    Rayfield:Notify({
-        Title = "Animation Remover",
-        Content = "Fusion animation restored.",
-        Duration = 3
-    })
+    warn(
+        "[Animation Remover] FusingController restored."
+    )
 end
 
 --//==================================================
@@ -241,7 +207,7 @@ local multipliers = {
 }
 
 --//==================================================
---// PARSE USER NUMBER
+--// PARSE NUMBER
 --//==================================================
 
 local function parseNumber(value)
@@ -265,9 +231,7 @@ local function parseNumber(value)
             multipliers[suffix]
 
         if number and multiplier then
-
             return number * multiplier
-
         end
     end
 
@@ -291,8 +255,7 @@ local function formatNumber(value)
 
         if value >= divisor then
 
-            local n =
-                value / divisor
+            local n = value / divisor
 
             if math.abs(
                 n - math.floor(n)
@@ -304,10 +267,7 @@ local function formatNumber(value)
             end
 
             local formatted =
-                string.format(
-                    "%.3f",
-                    n
-                )
+                string.format("%.3f", n)
 
             formatted =
                 formatted
@@ -371,15 +331,12 @@ local function getInventory()
                     then
 
                         size += 1
-
                     end
                 end
 
                 if size > bestSize then
-
                     bestSize = size
                     best = inventory
-
                 end
             end
         end
@@ -400,12 +357,8 @@ local function getChance(data)
             data
         )
 
-    if ok
-        and type(result) == "number"
-    then
-
+    if ok and type(result) == "number" then
         return result
-
     end
 
     return nil
@@ -426,23 +379,16 @@ local function scan()
 
     local groups = {}
 
-    for guid, data in pairs(
-        inventory
-    ) do
+    for guid, data in pairs(inventory) do
 
         if isGUID(guid)
             and type(data) == "table"
         then
 
             local name =
-                rawget(
-                    data,
-                    "name"
-                )
+                rawget(data, "name")
 
-            if name
-                and Entries[name]
-            then
+            if name and Entries[name] then
 
                 local chance =
                     getChance(data)
@@ -450,13 +396,10 @@ local function scan()
                 if chance then
 
                     local groupKey =
-                        formatNumber(
-                            chance
-                        )
+                        formatNumber(chance)
 
                     groups[groupKey] =
-                        groups[groupKey]
-                        or {}
+                        groups[groupKey] or {}
 
                     table.insert(
                         groups[groupKey],
@@ -466,23 +409,17 @@ local function scan()
                             chance = chance,
                         }
                     )
-
-                    print(
-                        "[Auto Fuse]",
-                        name,
-                        "| Raw Chance:",
-                        chance,
-                        "| Display:",
-                        "1 in " .. groupKey
-                    )
                 end
             end
         end
     end
 
+    Stats.Scans += 1
+
     return {
         inventorySize = inventorySize,
         groups = groups,
+        inventory = inventory,
     }
 end
 
@@ -490,9 +427,7 @@ end
 --// FIND CANDIDATES
 --//==================================================
 
-local function getCandidates(
-    scanData
-)
+local function getCandidates(scanData)
 
     local candidates = {}
 
@@ -522,63 +457,40 @@ local function getCandidates(
         end
     end
 
-    --// RAREST FIRST
-
-    if Settings.Order ==
-        "Rarest First"
-    then
+    if Settings.Order == "Rarest First" then
 
         table.sort(
             candidates,
             function(a, b)
 
                 if a.chance ~= b.chance then
-
-                    return a.chance >
-                        b.chance
-
+                    return a.chance > b.chance
                 end
 
-                return a.count >
-                    b.count
+                return a.count > b.count
             end
         )
 
-    --// MOST COPIES FIRST
-
-    elseif Settings.Order ==
-        "Most Copies First"
-    then
+    elseif Settings.Order == "Most Copies First" then
 
         table.sort(
             candidates,
             function(a, b)
 
                 if a.count ~= b.count then
-
-                    return a.count >
-                        b.count
-
+                    return a.count > b.count
                 end
 
-                return a.chance >
-                    b.chance
+                return a.chance > b.chance
             end
         )
 
-    --// LOWEST VALUE FIRST
-
-    elseif Settings.Order ==
-        "Lowest Value First"
-    then
+    elseif Settings.Order == "Lowest Value First" then
 
         table.sort(
             candidates,
             function(a, b)
-
-                return a.chance <
-                    b.chance
-
+                return a.chance < b.chance
             end
         )
     end
@@ -598,7 +510,7 @@ local Window =
     LoadingTitle = "Auto Fuse",
 
     LoadingSubtitle =
-        "Exact Chance Fusion",
+        "Fast Fusion + Accurate Counter",
 
     ConfigurationSaving = {
         Enabled = false,
@@ -646,8 +558,13 @@ local ScanLabel =
         "Scans: 0"
     )
 
+local FailedLabel =
+    Tab:CreateLabel(
+        "Failed: 0"
+    )
+
 --//==================================================
---// FUSION ANIMATION
+--// ANIMATION
 --//==================================================
 
 Tab:CreateSection(
@@ -660,8 +577,7 @@ Tab:CreateToggle({
 
     CurrentValue = false,
 
-    Flag =
-        "RemoveFusionAnimation",
+    Flag = "RemoveFusionAnimation",
 
     Callback = function(value)
 
@@ -670,26 +586,34 @@ Tab:CreateToggle({
 
         if value then
 
-            removeFusionAnimation()
+            local success =
+                removeFusionAnimation()
+
+            if success then
+
+                Rayfield:Notify({
+                    Title = "Animation Remover",
+                    Content = "Fusion animation removed.",
+                    Duration = 3
+                })
+
+            end
 
         else
 
             restoreFusionAnimation()
 
+            Rayfield:Notify({
+                Title = "Animation Remover",
+                Content = "Fusion animation restored.",
+                Duration = 3
+            })
         end
     end,
 })
 
-Tab:CreateLabel(
-    "Disables the FusingController Result listener."
-)
-
-Tab:CreateLabel(
-    "Result RemoteEvent remains active."
-)
-
 --//==================================================
---// FROM INPUT
+--// FROM
 --//==================================================
 
 Tab:CreateInput({
@@ -698,8 +622,7 @@ Tab:CreateInput({
 
     PlaceholderText = "650qd",
 
-    RemoveTextAfterFocusLost =
-        false,
+    RemoveTextAfterFocusLost = false,
 
     CurrentValue = "",
 
@@ -716,16 +639,13 @@ Tab:CreateInput({
             parseNumber(value)
 
         if parsed then
-
-            Settings.From =
-                parsed
-
+            Settings.From = parsed
         end
     end,
 })
 
 --//==================================================
---// BELOW INPUT
+--// BELOW
 --//==================================================
 
 Tab:CreateInput({
@@ -734,8 +654,7 @@ Tab:CreateInput({
 
     PlaceholderText = "1sx",
 
-    RemoveTextAfterFocusLost =
-        false,
+    RemoveTextAfterFocusLost = false,
 
     CurrentValue = "",
 
@@ -753,10 +672,7 @@ Tab:CreateInput({
             parseNumber(value)
 
         if parsed then
-
-            Settings.Below =
-                parsed
-
+            Settings.Below = parsed
         end
     end,
 })
@@ -770,13 +686,9 @@ Tab:CreateDropdown({
     Name = "Order",
 
     Options = {
-
         "Rarest First",
-
         "Most Copies First",
-
         "Lowest Value First",
-
     },
 
     CurrentOption = {
@@ -786,16 +698,60 @@ Tab:CreateDropdown({
     Callback = function(option)
 
         if type(option) == "table" then
-
-            option =
-                option[1]
-
+            option = option[1]
         end
 
-        Settings.Order =
-            option
+        Settings.Order = option
     end,
 })
+
+--//==================================================
+--// CHECK FUSION COMPLETION
+--//==================================================
+
+local function fusionUnitsConsumed(pending)
+
+    if not pending then
+        return false
+    end
+
+    local inventory =
+        getInventory()
+
+    if not inventory then
+        return false
+    end
+
+    return inventory[pending.a.guid] == nil
+        and inventory[pending.b.guid] == nil
+        and inventory[pending.c.guid] == nil
+end
+
+--//==================================================
+--// WAIT FOR REAL FUSION
+--//==================================================
+
+local function waitForFusionConfirmation(
+    pending
+)
+
+    local timeout = 3
+    local start = os.clock()
+
+    while os.clock() - start < timeout do
+
+        if fusionUnitsConsumed(
+            pending
+        ) then
+
+            return true
+        end
+
+        task.wait(0.1)
+    end
+
+    return false
+end
 
 --//==================================================
 --// FUSE THREE UNITS
@@ -806,6 +762,10 @@ local function fuseSelected(
 )
 
     if not selected then
+        return false
+    end
+
+    if FusionBusy then
         return false
     end
 
@@ -824,8 +784,9 @@ local function fuseSelected(
     then
 
         return false
-
     end
+
+    FusionBusy = true
 
     local unitNames =
         tostring(a.name)
@@ -839,8 +800,6 @@ local function fuseSelected(
             selected.chance
         )
 
-    --// SHOW BEFORE FUSING
-
     StatusLabel:Set(
         "Fusing: "
         .. unitNames
@@ -853,45 +812,12 @@ local function fuseSelected(
         .. unitNames
     )
 
-    print(
-        "=============================="
-    )
-
-    print(
-        "[AUTO FUSE]"
-    )
-
-    print(
-        "Unit 1:",
-        a.name,
-        "|",
-        a.chance
-    )
-
-    print(
-        "Unit 2:",
-        b.name,
-        "|",
-        b.chance
-    )
-
-    print(
-        "Unit 3:",
-        c.name,
-        "|",
-        c.chance
-    )
-
-    print(
-        "Display Chance: 1 in "
-        .. chanceText
-    )
-
-    print(
-        "=============================="
-    )
-
-    --// ACTUAL FUSION
+    PendingFusion = {
+        a = a,
+        b = b,
+        c = c,
+        started = os.clock(),
+    }
 
     local success, err =
         pcall(function()
@@ -901,10 +827,42 @@ local function fuseSelected(
                 b.guid,
                 c.guid
             )
-
         end)
 
-    if success then
+    if not success then
+
+        PendingFusion = nil
+        FusionBusy = false
+
+        Stats.Failed += 1
+
+        FailedLabel:Set(
+            "Failed: "
+            .. Stats.Failed
+        )
+
+        StatusLabel:Set(
+            "Fuse Error"
+        )
+
+        warn(
+            "[Auto Fuse] Remote error:",
+            err
+        )
+
+        return false
+    end
+
+    -- IMPORTANT:
+    -- FireServer only means the request was sent.
+    -- We do NOT increment Done here.
+
+    local confirmed =
+        waitForFusionConfirmation(
+            PendingFusion
+        )
+
+    if confirmed then
 
         Stats.Done += 1
 
@@ -918,38 +876,38 @@ local function fuseSelected(
             .. unitNames
         )
 
-        TargetLabel:Set(
-            "1 in "
-            .. chanceText
-            .. " | "
-            .. unitNames
-        )
-
         print(
-            "[Auto Fuse] Fused:",
+            "[Auto Fuse] CONFIRMED:",
             unitNames
         )
 
         print(
-            "[Auto Fuse] Chance: 1 in "
+            "[Auto Fuse] Confirmed Chance: 1 in "
             .. chanceText
         )
 
-        return true
-
     else
 
+        Stats.Failed += 1
+
+        FailedLabel:Set(
+            "Failed: "
+            .. Stats.Failed
+        )
+
         StatusLabel:Set(
-            "Fuse Error"
+            "Fusion not confirmed"
         )
 
         warn(
-            "[Auto Fuse] Error:",
-            err
+            "[Auto Fuse] Fusion request was not confirmed."
         )
-
-        return false
     end
+
+    PendingFusion = nil
+    FusionBusy = false
+
+    return confirmed
 end
 
 --//==================================================
@@ -958,12 +916,9 @@ end
 
 local function performFusion()
 
-    Stats.Scans += 1
-
-    ScanLabel:Set(
-        "Scans: "
-        .. Stats.Scans
-    )
+    if FusionBusy then
+        return false
+    end
 
     local data =
         scan()
@@ -990,6 +945,11 @@ local function performFusion()
         .. data.inventorySize
     )
 
+    ScanLabel:Set(
+        "Scans: "
+        .. Stats.Scans
+    )
+
     local candidates =
         getCandidates(data)
 
@@ -1009,13 +969,6 @@ local function performFusion()
     local selected =
         candidates[1]
 
-    print(
-        "[Auto Fuse] Candidate:",
-        selected.key,
-        "| Copies:",
-        selected.count
-    )
-
     return fuseSelected(
         selected
     )
@@ -1031,7 +984,9 @@ Tab:CreateButton({
 
     Callback = function()
 
-        performFusion()
+        task.spawn(
+            performFusion
+        )
 
     end,
 })
@@ -1046,13 +1001,11 @@ Tab:CreateToggle({
 
     CurrentValue = false,
 
-    Flag =
-        "AutoFuseToggle",
+    Flag = "AutoFuseToggle",
 
     Callback = function(value)
 
-        Settings.Enabled =
-            value
+        Settings.Enabled = value
 
         if not value then
 
@@ -1075,7 +1028,9 @@ Tab:CreateToggle({
 
             while Settings.Enabled do
 
-                performFusion()
+                if not FusionBusy then
+                    performFusion()
+                end
 
                 task.wait(
                     Settings.Delay
@@ -1102,20 +1057,50 @@ Tab:CreateSlider({
 
     Suffix = "s",
 
-    CurrentValue = 1.5,
+    CurrentValue = 0.5,
 
-    Flag =
-        "FuseDelaySlider",
+    Flag = "FuseDelaySlider",
 
     Callback = function(value)
 
-        Settings.Delay =
-            value
+        Settings.Delay = value
     end,
 })
 
 --//==================================================
 --// INFORMATION
+--//==================================================
+
+Tab:CreateSection(
+    "Fusion Accuracy"
+)
+
+Tab:CreateLabel(
+    "Done counts only after the fused units disappear."
+)
+
+Tab:CreateLabel(
+    "FireServer is not counted as a completed fusion."
+)
+
+Tab:CreateLabel(
+    "A second fusion cannot start while one is pending."
+)
+
+Tab:CreateLabel(
+    "Scanning avoids per-unit console spam."
+)
+
+Tab:CreateLabel(
+    "Failed counts fusion requests that were not confirmed."
+)
+
+Tab:CreateLabel(
+    "Each fusion is checked before the next one begins."
+)
+
+--//==================================================
+--// HOW IT SELECTS
 --//==================================================
 
 Tab:CreateSection(
@@ -1139,7 +1124,55 @@ Tab:CreateLabel(
 )
 
 Tab:CreateLabel(
+    "Most Copies First selects the largest group."
+)
+
+Tab:CreateLabel(
+    "Lowest Value First selects the lowest chance."
+)
+
+Tab:CreateLabel(
     "Exactly 3 units are selected."
+)
+
+--//==================================================
+--// ANIMATION REMOVER
+--//==================================================
+
+Tab:CreateSection(
+    "Animation Remover"
+)
+
+Tab:CreateLabel(
+    "Disables the FusingController result listener."
+)
+
+Tab:CreateLabel(
+    "The Result RemoteEvent itself remains active."
+)
+
+Tab:CreateLabel(
+    "This removes the fusion animation without GUI scanning."
+)
+
+--//==================================================
+--// STATUS
+--//==================================================
+
+Tab:CreateSection(
+    "Current Status"
+)
+
+Tab:CreateLabel(
+    "Done = confirmed fusions."
+)
+
+Tab:CreateLabel(
+    "Failed = unconfirmed fusion requests."
+)
+
+Tab:CreateLabel(
+    "Scans = completed inventory scans."
 )
 
 --//==================================================
@@ -1151,7 +1184,7 @@ Rayfield:Notify({
     Title = "Auto Fuse",
 
     Content =
-        "Auto Fuse + Animation Remover loaded.",
+        "Fast Auto Fuse + accurate confirmation loaded.",
 
     Duration = 4
 })
